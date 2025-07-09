@@ -6,6 +6,7 @@ WORKDIR /app
 
 # Copy the built jar file into the image (make sure the jar is already built using `mvn clean package`)
 COPY target/SchedulerW4-0.0.1-SNAPSHOT.jar app.jar
+COPY .env .env
 
 # Expose the port the app runs on
 EXPOSE 8080

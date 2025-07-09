@@ -1,6 +1,4 @@
 services:
-
-  #Postgres RDB
   postgres:
     image: postgres:15
     container_name: scheduler-postgres
@@ -15,50 +13,61 @@ services:
     networks:
       - scheduler-net
 
-  #Redis Caching - For Admin Stats
   redis:
     image: redis:7-alpine
     container_name: scheduler-redis
     ports:
       - "6379:6379"
-
+    volumes:
+      - redis_data:/data
     networks:
       - scheduler-net
 
-    volumes:
-      - redis_data:/data
-
-  #RabbitMQ - Book / Cancel Notification
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: scheduler-rabbitmq
     ports:
-      - "5672:5672" #AMQP
-      - "15672:15672" #Management UI
-
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
     networks:
       - scheduler-net
 
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scheduler-app
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - scheduler-net
     environment:
-      #Default creds. to access UI
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/schedulerdb
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=pass
 
-#  app:
-#    build:
-#      context: .
-#      dockerfile: Dockerfile
-#    container_name: scheduler-app
-#    ports:
-#      - "8080:8080"
-#    depends_on:
-#      - postgres
-#    networks:
-#      - scheduler-net
-#    environment:
-#      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/schedulerdb
-#      SPRING_DATASOURCE_USERNAME: user
-#      SPRING_DATASOURCE_PASSWORD: pass
+  frontend:
+    build:
+      context: ../SchedulerW4-Frontend/react-frontend
+      dockerfile: Dockerfile.dev
+    container_name: scheduler-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../SchedulerW4-Frontend/react-frontend:/app
+      - /app/node_modules
+    networks:
+      - scheduler-net
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

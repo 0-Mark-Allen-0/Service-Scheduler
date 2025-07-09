@@ -13,6 +13,7 @@ import com.example.SchedulerW4.repositories.ProviderRepository;
 import com.example.SchedulerW4.repositories.SlotRepository;
 import com.example.SchedulerW4.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +45,7 @@ public class AppointmentServiceImpl implements AppointmentService{
 
     @Override
     @Transactional
+    @CacheEvict(value = "adminStats", key = "'dashboardStats'") // Evict the cache
     public AppointmentResponseDto bookAppointment(AppointmentRequestDto dto) {
 
         User user = userService.findById(dto.getUserId());
@@ -105,9 +107,8 @@ public class AppointmentServiceImpl implements AppointmentService{
     }
 
 
-
-    //Will implement later
     @Override
+    @CacheEvict(value = "adminStats", key = "'dashboardStats'") // Evict the cache
     public AppointmentResponseDto rescheduleAppointment(Long appointmentId, Long newSlotId, Long userId) {
 
         Appointment appointment = appointmentRepository.findById(appointmentId).orElseThrow(() -> new RuntimeException("Appointment Not Found For ID: " + appointmentId));
@@ -147,6 +148,7 @@ public class AppointmentServiceImpl implements AppointmentService{
     }
 
     @Override
+    @CacheEvict(value = "adminStats", key = "'dashboardStats'") // Evict the cache
     public void cancelAppointment(Long appointmentId, Long userId) {
         // 1. Find the specific appointment
         Appointment appointment = appointmentRepository.findById(appointmentId)
