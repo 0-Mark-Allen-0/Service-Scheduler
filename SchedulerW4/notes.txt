@@ -1,0 +1,74 @@
+-> Provider Controller is ready (provider creation and slot handling) -- DONE
+-> Need to create appointment logic and implement in User Controller -- DONE
+-> Need to move View All Providers and View All Users under ADMIN -- SOON
+-> Shifting to containerized Postgres to avoid H2 limitations -- DONE
+-> Add Appointment working as intended -- DONE
+-> Provider must be able to see the slots that have been booked -- DONE
+-> Removing the MAXIMUM BOOKINGS LOGIC -- DONE
+-> Implementing CANCEL & RESCHEDULE logic -- 1/2 DONE
+-> Unbooked slot cleanup -- DONE
+
+To RUN POSTGRES DOCKER:
+1.
+docker run -d   --name scheduler-postgres   -e POSTGRES_USER=scheduleruser   -e POSTGRES_PASSWORD=schedulerpass   -e POSTGRES_DB=schedulerdb   -p 5432:5432   postgres:15
+
+2. Open PSQL & enter the credentials:
+    localhost
+    schedulerdb
+    5432
+    scheduleruser
+    schedulerpass
+
+IMPORTANT: STEPS 1-2 REDUNDANT --> DOCKER-COMPOSE HAS BEEN CREATED TO HANDLE THIS
+RUN --> docker-compose up -d
+DONE!
+
+
+-- FRONTEND BACKEND INTEGRATION --
+1. Enable CORS (Cross Origin Resource Sharing) in Controllers -- @CrossOrigin(origins = "http://localhost:5173/") in all
+
+
+KAFKA IDEAS:
+1. Slot Creation / Deletion Notification TO: PROVIDER
+2. Appointment Booking / Cancellation Notification TO: USER
+3. USER Appointment Cancellation Notification TO: PROVIDER
+
+--> Frontend - Backend Integration is done. All user and provider features work as expected
+
+Upcoming:
+0. ADMIN dashboard - setup metrics, create a controller, figure out a way to handle admin auth --> design dashboard
+1. Slot Cleanup -> Automatically mark as completed after "end time"
+2. Redis implementation - figure out an usecase
+
+
+ADMIN INTEGRATION:
+1. Updating Repositories to get metrics -- DONE
+2. Setup required DTOs -- DONE
+3. Setup Admin Service
+
+
+Implementing Redis:
+1. To fetch Admin stats into cache
+2. added dependencies
+3. enable cache in main file
+4. annotate adminstats fn. with cache
+5. create cache config to handle and remove it
+6. Docker redis server after defining in app.prop
+DONE
+
+Implementing RabbitMQ - DONE:
+1. For async notification handling for booking / cancellation
+2. added deps.
+3. Integrate into docker
+4. Configure in app.prop (for local running, if required)
+5. NotificationDto to hold notif. payload
+6. Notif Producer & Consumer
+
+
+TESTING:
+Unit - DONE
+Integration - DONE
+
+
+APPOINTMENT LOGIC NEEDS A CHANGE:
+MUST ALLOW TO BOOK IF STATUS IS SET TO CANCEL - reset Appointment - Slot relationship to Many-to-one

@@ -1,0 +1,8 @@
+To access userId through JWT token:
+
+const { decodedToken } = useAuth();
+const userId = decodedToken?.sub;
+
+---------------------------------------------------
+1. Write out the services in services/api.ts
+2. Integrate them into the UI components

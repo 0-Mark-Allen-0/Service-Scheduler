@@ -1,0 +1,68 @@
+services:
+
+  #Postgres RDB
+  postgres:
+    image: postgres:15
+    container_name: scheduler-postgres
+    environment:
+      POSTGRES_DB: schedulerdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - scheduler-net
+
+  #Redis Caching - For Admin Stats
+  redis:
+    image: redis:7-alpine
+    container_name: scheduler-redis
+    ports:
+      - "6379:6379"
+
+    networks:
+      - scheduler-net
+
+    volumes:
+      - redis_data:/data
+
+  #RabbitMQ - Book / Cancel Notification
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: scheduler-rabbitmq
+    ports:
+      - "5672:5672" #AMQP
+      - "15672:15672" #Management UI
+
+    networks:
+      - scheduler-net
+
+    environment:
+      #Default creds. to access UI
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+#  app:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: scheduler-app
+#    ports:
+#      - "8080:8080"
+#    depends_on:
+#      - postgres
+#    networks:
+#      - scheduler-net
+#    environment:
+#      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/schedulerdb
+#      SPRING_DATASOURCE_USERNAME: user
+#      SPRING_DATASOURCE_PASSWORD: pass
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  scheduler-net:
