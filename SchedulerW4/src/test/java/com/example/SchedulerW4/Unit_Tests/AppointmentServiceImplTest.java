@@ -25,6 +25,7 @@ class AppointmentServiceImplTest {
     @Mock private SlotService slotService;
     @Mock private UserService userService;
     @Mock private ProviderService providerService;
+    @Mock private RedisService redisService;
     @Mock private NotificationMessageProducer notificationProducer;
 
     @InjectMocks
@@ -40,7 +41,7 @@ class AppointmentServiceImplTest {
         MockitoAnnotations.openMocks(this);
 
         user = User.builder().id(1L).name("John").email("john@example.com").build();
-        provider = Provider.builder().id(2L).name("Dr. Who").specialization("Neurology").build();
+        provider = Provider.builder().id(2L).name("Dr. Who").email("doctor@example.com").specialization("Neurology").build();
         slot = Slot.builder().id(3L).startTime(LocalDateTime.now().plusDays(1)).isBooked(false).provider(provider).build();
         appointment = Appointment.builder()
                 .id(10L).user(user).provider(provider).slot(slot)
@@ -61,8 +62,8 @@ class AppointmentServiceImplTest {
 
         var response = appointmentService.bookAppointment(dto);
 
-        assertThat(response.getAppointmentId()).isEqualTo(appointment.getId());
-        verify(notificationProducer).sendNotification(any(NotificationDto.class));
+        assertThat(response.getAppointment().getAppointmentId()).isEqualTo(appointment.getId());
+        verify(notificationProducer, atLeastOnce()).sendNotification(any(NotificationDto.class));
     }
 
     @Test
@@ -71,10 +72,15 @@ class AppointmentServiceImplTest {
         AppointmentRequestDto dto = new AppointmentRequestDto(user.getId(), provider.getId(), slot.getId());
 
         when(slotService.findById(slot.getId())).thenReturn(slot);
+        when(userService.findById(user.getId())).thenReturn(user);
+        when(providerService.findById(provider.getId())).thenReturn(provider);
+        when(redisService.isUserInQueue(slot.getId(), user.getId())).thenReturn(false);
+        when(appointmentRepository.save(any())).thenReturn(appointment);
 
-        assertThatThrownBy(() -> appointmentService.bookAppointment(dto))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessage("Requested slot is already booked");
+        var response = appointmentService.bookAppointment(dto);
+
+        assertThat(response.getStatus().name()).isEqualTo("QUEUED");
+        verify(notificationProducer, atLeastOnce()).sendNotification(any(NotificationDto.class));
     }
 
     @Test
@@ -82,13 +88,14 @@ class AppointmentServiceImplTest {
         appointment.setSlot(slot);
 
         when(appointmentRepository.findById(appointment.getId())).thenReturn(Optional.of(appointment));
-        when(slotRepository.save(slot)).thenReturn(slot);
-        when(appointmentRepository.save(appointment)).thenReturn(appointment);
+        when(slotRepository.findById(slot.getId())).thenReturn(Optional.of(slot));
+        when(appointmentRepository.save(any())).thenReturn(appointment);
+        when(redisService.getQueueSize(slot.getId())).thenReturn(0L);
 
         appointmentService.cancelAppointment(appointment.getId(), user.getId());
 
         assertThat(appointment.getStatus()).isEqualTo(Appointment.Status.CANCELLED);
-        verify(notificationProducer).sendNotification(any(NotificationDto.class));
+        verify(notificationProducer, atLeastOnce()).sendNotification(any(NotificationDto.class));
     }
 
     @Test
@@ -115,7 +122,7 @@ class AppointmentServiceImplTest {
 
     @Test
     void getAllAppointments_returnsAppointmentsForUser() {
-        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(userService.findById(user.getId())).thenReturn(user);
         when(appointmentRepository.findByUser(user)).thenReturn(List.of(appointment));
 
         var result = appointmentService.getAllAppointments(user.getId());
@@ -126,7 +133,7 @@ class AppointmentServiceImplTest {
 
     @Test
     void getProviderAppointments_returnsAppointments() {
-        when(providerRepository.findById(provider.getId())).thenReturn(Optional.of(provider));
+        when(providerService.findById(provider.getId())).thenReturn(provider);
         when(appointmentRepository.findByProvider(provider)).thenReturn(List.of(appointment));
 
         var result = appointmentService.getProviderAppointments(provider.getId());
@@ -137,27 +144,35 @@ class AppointmentServiceImplTest {
 
     @Test
     void rescheduleAppointment_success() {
-        Slot newSlot = Slot.builder().id(9L).startTime(LocalDateTime.now().plusDays(2)).isBooked(false).build();
+        Slot newSlot = Slot.builder().id(9L).startTime(LocalDateTime.now().plusDays(2)).isBooked(false).provider(provider).build();
         appointment.setUser(user);
 
         when(appointmentRepository.findById(appointment.getId())).thenReturn(Optional.of(appointment));
         when(slotService.findById(newSlot.getId())).thenReturn(newSlot);
+        when(slotRepository.findById(slot.getId())).thenReturn(Optional.of(slot));
+        when(slotRepository.save(any())).thenReturn(slot);
         when(appointmentRepository.save(any())).thenReturn(appointment);
 
         var response = appointmentService.rescheduleAppointment(appointment.getId(), newSlot.getId(), user.getId());
-        assertThat(appointment.getSlot().getId()).isEqualTo(newSlot.getId());
-        assertThat(response.getSlotId()).isEqualTo(newSlot.getId());
+
+        assertThat(response.getAppointment().getSlotId()).isEqualTo(newSlot.getId());
+        verify(notificationProducer, atLeastOnce()).sendNotification(any(NotificationDto.class));
     }
 
     @Test
-    void rescheduleAppointment_withBookedSlot_throws() {
-        Slot newSlot = Slot.builder().id(9L).startTime(LocalDateTime.now().plusDays(2)).isBooked(true).build();
+    void rescheduleAppointment_withBookedSlot_queuesUser() {
+        Slot newSlot = Slot.builder().id(9L).startTime(LocalDateTime.now().plusDays(2)).isBooked(true).provider(provider).build();
+        appointment.setUser(user);
 
         when(appointmentRepository.findById(appointment.getId())).thenReturn(Optional.of(appointment));
         when(slotService.findById(newSlot.getId())).thenReturn(newSlot);
+        when(slotRepository.findById(slot.getId())).thenReturn(Optional.of(slot));
+        when(redisService.isUserInQueue(newSlot.getId(), user.getId())).thenReturn(false);
+        when(appointmentRepository.save(any())).thenReturn(appointment);
 
-        assertThatThrownBy(() -> appointmentService.rescheduleAppointment(appointment.getId(), newSlot.getId(), user.getId()))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("already booked");
+        var response = appointmentService.rescheduleAppointment(appointment.getId(), newSlot.getId(), user.getId());
+
+        assertThat(response.getStatus().name()).isEqualTo("QUEUED");
+        verify(notificationProducer, atLeastOnce()).sendNotification(any(NotificationDto.class));
     }
 }

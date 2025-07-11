@@ -28,37 +28,41 @@ import java.util.Collections;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@RequiredArgsConstructor // This lombok annotation injects the final fields
+@RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
     private final UserRepository userRepository;
     private final CorsConfigurationSource corsConfigurationSource;
-    // private final PasswordEncoder passwordEncoder; // <--- REMOVE THIS FIELD INJECTION!
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        System.out.println("=== Security Filter Chain Configuration ===");
+        System.out.println("Configuring security for admin endpoints");
+
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/admin/**").hasRole(User.Role.ADMIN.name())
-                        .requestMatchers("/users/**").hasRole(User.Role.USER.name())
-                        .requestMatchers("/providers/**").hasRole(User.Role.PROVIDER.name())
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").hasRole(User.Role.ADMIN.name())
+                        .requestMatchers("/debug/**").permitAll() // Add debug endpoints
                         .requestMatchers("/actuator/**").permitAll()
+                        // CHANGED: Use hasAuthority instead of hasRole for more explicit matching
+                        .requestMatchers("/admin/**").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/users/**").hasAuthority("ROLE_USER")
+                        .requestMatchers("/providers/**").hasAuthority("ROLE_PROVIDER")
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").hasAuthority("ROLE_ADMIN")
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authenticationProvider(authenticationProvider()) // This will implicitly use the PasswordEncoder bean
+                .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
+        System.out.println("=== End Security Filter Chain Configuration ===");
         return http.build();
     }
 
-    // This bean method is correctly defined and will be found by Spring.
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -73,9 +77,9 @@ public class SecurityConfig {
      * @return an implementation of UserDetailsService
      */
     @Bean
-    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) { // Keep injecting PasswordEncoder here
-        final String ADMIN_EMAIL = AuthenticationService.ADMIN_EMAIL; // Use static final from AuthService
-        final String ADMIN_RAW_PASSWORD = AuthenticationService.ADMIN_RAW_PASSWORD; // Use static final from AuthService
+    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
+        final String ADMIN_EMAIL = "admin@gmail.com"; // Placeholder for actual admin email
+        final String ADMIN_RAW_PASSWORD = "admin123"; // Placeholder for actual admin password
         final String adminEncodedPassword = passwordEncoder.encode(ADMIN_RAW_PASSWORD);
 
         System.out.println("Hardcoded Admin Encoded Password (from UserDetailsService bean): " + adminEncodedPassword);
@@ -87,7 +91,7 @@ public class SecurityConfig {
                 return org.springframework.security.core.userdetails.User.builder()
                         .username(ADMIN_EMAIL)
                         .password(adminEncodedPassword)
-                        .authorities(Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + User.Role.ADMIN.name())))
+                        .authorities(Collections.singletonList(new SimpleGrantedAuthority("ROLE_ADMIN")))
                         .accountExpired(false)
                         .accountLocked(false)
                         .credentialsExpired(false)
@@ -96,7 +100,15 @@ public class SecurityConfig {
             } else {
                 User user = userRepository.findByEmail(username)
                         .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + username));
-                return user;
+                return org.springframework.security.core.userdetails.User.builder()
+                        .username(user.getEmail())
+                        .password(user.getPassword())
+                        .authorities(Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())))
+                        .accountExpired(false)
+                        .accountLocked(false)
+                        .credentialsExpired(false)
+                        .disabled(false)
+                        .build();
             }
         };
     }
@@ -104,10 +116,8 @@ public class SecurityConfig {
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        // Here, userDetailsService() and passwordEncoder() are *method calls* to get the beans,
-        // not constructor injections. Spring's wiring handles this.
-        authProvider.setUserDetailsService(userDetailsService(passwordEncoder())); // Call the method to get the bean
-        authProvider.setPasswordEncoder(passwordEncoder()); // Call the method to get the bean
+        authProvider.setUserDetailsService(userDetailsService(passwordEncoder()));
+        authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
     }
 

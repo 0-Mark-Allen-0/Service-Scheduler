@@ -30,19 +30,19 @@ public class ProviderController {
     private final AppointmentService appointmentService;
 
     //Shift to ADMIN
-    @GetMapping("/all")
-    public ResponseEntity<List<ProviderResponseDto>> getAllProviders() {
-        List<ProviderResponseDto> response = providerService.getAllProviders().stream()
-                .map(provider -> ProviderResponseDto.builder()
-                        .id(provider.getId())
-                        .name(provider.getName())
-                        .email(provider.getEmail())
-                        .specialization(provider.getSpecialization())
-                        .build())
-                .toList();
-
-        return ResponseEntity.ok(response);
-    }
+//    @GetMapping("/all")
+//    public ResponseEntity<List<ProviderResponseDto>> getAllProviders() {
+//        List<ProviderResponseDto> response = providerService.getAllProviders().stream()
+//                .map(provider -> ProviderResponseDto.builder()
+//                        .id(provider.getId())
+//                        .name(provider.getName())
+//                        .email(provider.getEmail())
+//                        .specialization(provider.getSpecialization())
+//                        .build())
+//                .toList();
+//
+//        return ResponseEntity.ok(response);
+//    }
 
     //View the slots the current provider has enrolled for -- JWT
     @GetMapping("/slots/enrolled")

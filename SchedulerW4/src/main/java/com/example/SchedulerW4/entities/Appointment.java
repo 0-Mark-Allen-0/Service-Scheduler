@@ -1,6 +1,5 @@
 package com.example.SchedulerW4.entities;
 
-
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -11,11 +10,9 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-
 @Entity
 @Table(name = "appointments")
 public class Appointment {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -40,7 +37,7 @@ public class Appointment {
 
     public enum Status {
         BOOKED,
-        CANCELLED
+        CANCELLED,
+        QUEUED // NEW: Added QUEUED status
     }
-
 }

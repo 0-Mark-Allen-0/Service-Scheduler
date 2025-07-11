@@ -1,10 +1,8 @@
-// src/main/java/com/example/SchedulerW4/controllers/AuthController.java
 package com.example.SchedulerW4.controllers;
 
 import com.example.SchedulerW4.configs.AuthenticationService;
 import com.example.SchedulerW4.dtos.auth_dtos.LoginRequestDto;
 import com.example.SchedulerW4.dtos.auth_dtos.LoginResponseDto;
-import com.example.SchedulerW4.dtos.auth_dtos.OtpRequestDto; // NEW
 import com.example.SchedulerW4.dtos.auth_dtos.ProviderRegistrationDto;
 import com.example.SchedulerW4.dtos.auth_dtos.UserRegistrationDto;
 import com.example.SchedulerW4.dtos.response_dtos.UserResponseDto;
@@ -22,54 +20,57 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/auth")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "http://localhost:5173/")
+//FIXED & READY
+
 public class AuthController {
 
     private final AuthenticationService authenticationService;
     private final UserService userService;
     private final ProviderService providerService;
 
+    //Centralized all authorizations within Auth Controller
+
     //User Registration
     @PostMapping("/register/user")
     public ResponseEntity<UserResponseDto> registerUser(@RequestBody @Valid UserRegistrationDto dto) {
+
         User newUser = userService.registerUser(dto);
+
         UserResponseDto responseDto = UserResponseDto.builder()
                 .id(newUser.getId())
                 .name(newUser.getName())
                 .email(newUser.getEmail())
                 .build();
+
         return ResponseEntity.ok(responseDto);
+
     }
 
     //Provider Registration
     @PostMapping("/register/provider")
     public ResponseEntity<ProviderResponseDto> registerProvider(@RequestBody @Valid ProviderRegistrationDto dto) {
+
         Provider newProvider = providerService.registerProvider(dto);
+
         ProviderResponseDto responseDto = ProviderResponseDto.builder()
                 .id(newProvider.getId())
                 .name(newProvider.getName())
                 .email(newProvider.getEmail())
                 .specialization(newProvider.getSpecialization())
                 .build();
+
         return ResponseEntity.ok(responseDto);
+
     }
 
-    // Initial Login - Email/Password submission
+    //User + Provider + Admin Login
     @PostMapping("/login")
-    public ResponseEntity<LoginResponseDto> login(
+    public ResponseEntity<LoginResponseDto> login (
             @RequestBody @Valid LoginRequestDto loginDto
     ) {
-        // This will now initiate the OTP process and return otpRequired=true
+        // Now, authenticationService.authenticate returns the full LoginResponseDto
         LoginResponseDto responseDto = authenticationService.authenticate(loginDto);
         return ResponseEntity.ok(responseDto);
     }
 
-    // NEW endpoint for OTP verification
-    @PostMapping("/verify-otp")
-    public ResponseEntity<LoginResponseDto> verifyOtp(
-            @RequestBody @Valid OtpRequestDto otpDto
-    ) {
-        // This will verify the OTP and, if valid, return the JWT token
-        LoginResponseDto responseDto = authenticationService.verifyOtp(otpDto);
-        return ResponseEntity.ok(responseDto);
-    }
 }

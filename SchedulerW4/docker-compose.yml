@@ -53,6 +53,8 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/schedulerdb
       - SPRING_DATASOURCE_USERNAME=user
       - SPRING_DATASOURCE_PASSWORD=pass
+      - JWT_SECRET=nw2Zy3tSkXd3xbkerT9uSoHibqUajZabfqSrsSy2vxVIokt5tV6B4v3qTsDeiZ6WN9YToiqvXcpLsOioxDORFbQAlvPDjnMJDR7bVoiDQxApQN2UWWM0pvM29oZ8YZRXbE8e1JBp7JGQYMrifelZi57RWIpKPRQWRC7d3v77pkvsOhTS6yp79Z6WI5m51BmsA1bZC3coJJ7ukr05iiVQJb84G6YqeYE1j9kqhXh0HdDRCCwVN0UksDLumrCB7qFL
+
 
   frontend:
     build:

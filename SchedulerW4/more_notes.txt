@@ -1,0 +1,10 @@
+1. Implementing OTP service:
+- Creating OTP entity
+- Creating OTP repository
+- Make changes to LoginResponseDto
+- Make changes to AuthenticationService
+- Make changes to AuthController
+- OTP Request DTO
+- Provision OTP related DTOs in frontend
+- Create a new service in frontend
+- Modify Login.tsx for OTP

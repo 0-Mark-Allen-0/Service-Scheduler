@@ -1,6 +1,8 @@
+"use client";
+
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // src/pages/UserDashboard.tsx
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,9 +11,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -36,8 +38,12 @@ import {
   Search,
   Ban,
   RefreshCw,
-  Pencil, // Import Pencil Icon for rescheduling
-  Info, // Import Info icon from old design
+  Pencil,
+  Info,
+  AlertTriangle,
+  Users,
+  Filter,
+  Clock3,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
@@ -51,9 +57,12 @@ import type {
   AppointmentRescheduleRequestDto,
 } from "@/types/api";
 
+// NEW: Status filter type
+type AppointmentStatusFilter = "ALL" | "BOOKED" | "QUEUED" | "CANCELLED";
+
 export default function UserDashboardPage() {
   // State variables
-  const [availableSlots, setAvailableSlots] = useState<SlotResponseDto[]>([]);
+  const [allSlots, setAllSlots] = useState<SlotResponseDto[]>([]);
   const [userAppointments, setUserAppointments] = useState<
     AppointmentResponseDto[]
   >([]);
@@ -73,6 +82,10 @@ export default function UserDashboardPage() {
   const [loadingSlots, setLoadingSlots] = useState(true);
   const [errorSlots, setErrorSlots] = useState<string | null>(null);
 
+  // NEW: Status filter state
+  const [statusFilter, setStatusFilter] =
+    useState<AppointmentStatusFilter>("ALL");
+
   // States for the Reschedule Dialog
   const [isRescheduleDialogOpen, setIsRescheduleDialogOpen] = useState(false);
   const [appointmentToReschedule, setAppointmentToReschedule] =
@@ -86,6 +99,7 @@ export default function UserDashboardPage() {
     setErrorAppointments(null);
     try {
       const appointments = await apiService.viewBookedSlots();
+      console.log("=== DEBUG: Fetched appointments ===", appointments); // DEBUG
       setUserAppointments(appointments);
     } catch (error) {
       console.error("Error fetching user appointments:", error);
@@ -95,64 +109,80 @@ export default function UserDashboardPage() {
     }
   }, []);
 
-  const fetchAllAvailableSlots = useCallback(async () => {
+  const fetchAllSlots = useCallback(async () => {
     setLoadingSlots(true);
     setErrorSlots(null);
     try {
       const slots = await apiService.viewAllSlots();
-      setAvailableSlots(slots);
+      console.log("Fetched slots:", slots);
+      setAllSlots(slots);
     } catch (error) {
-      console.error("Error fetching available slots:", error);
-      setErrorSlots("Failed to load available slots.");
+      console.error("Error fetching all slots:", error);
+      setErrorSlots("Failed to load slots.");
     } finally {
       setLoadingSlots(false);
     }
   }, []);
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([fetchUserAppointments(), fetchAllAvailableSlots()]);
-  }, [fetchUserAppointments, fetchAllAvailableSlots]);
+    await Promise.all([fetchUserAppointments(), fetchAllSlots()]);
+  }, [fetchUserAppointments, fetchAllSlots]);
 
   useEffect(() => {
     handleRefresh();
   }, [handleRefresh]);
 
   // --- Filter Logic ---
-
-  // Filter availableSlots to only show slots that are NOT booked
-  const unbookedAvailableSlots = availableSlots.filter(
-    (slot) => !slot.isBooked
-  );
-
-  // Filter slots for the initial booking dialog
+  // Filter slots for the initial booking dialog - show all slots
   const slotsForDialog = selectedProviderIdForDialog
-    ? unbookedAvailableSlots.filter(
-        (slot) => slot.providerId === selectedProviderIdForDialog
+    ? allSlots.filter((slot) => slot.providerId === selectedProviderIdForDialog)
+    : [];
+
+  // Filter slots for the reschedule dialog - only unbooked slots
+  const slotsForRescheduleDialog = appointmentToReschedule
+    ? allSlots.filter(
+        (slot) =>
+          slot.providerName === appointmentToReschedule.providerName &&
+          !slot.booked
       )
     : [];
 
-  // Filter slots for the reschedule dialog.
-  // Since AppointmentResponseDto lacks a providerId, we use the providerName
-  // from the appointment to find matching slots from the main availableSlots list.
-  const slotsForRescheduleDialog = appointmentToReschedule
-    ? unbookedAvailableSlots.filter(
-        (slot) => slot.providerName === appointmentToReschedule.providerName
-      )
-    : [];
+  // NEW: Filter appointments by status
+  const filteredAppointments = userAppointments.filter((appointment) => {
+    if (statusFilter === "ALL") return true;
+    return appointment.status === statusFilter;
+  });
 
   // --- Action Handlers ---
   const handleBookAppointment = async () => {
     if (selectedSlotToBook && selectedProviderIdForDialog) {
       try {
+        console.log("=== DEBUG: Booking appointment ===");
+        console.log("Slot ID:", selectedSlotToBook.slotId);
+        console.log("Provider ID:", selectedProviderIdForDialog);
+        console.log("Slot is booked:", selectedSlotToBook.booked);
+
         const requestDto: AppointmentRequestDto = {
           userId: 0,
           providerId: selectedProviderIdForDialog,
           slotId: selectedSlotToBook.slotId,
         };
-        await apiService.bookAppointment(requestDto);
+        const response = await apiService.bookAppointment(requestDto);
+        console.log("=== DEBUG: Booking response ===", response);
+
         await handleRefresh();
         setIsBookingDialogOpen(false);
-        alert("Appointment booked successfully!");
+
+        // Show different messages based on booking status
+        if (response.status === "BOOKED") {
+          alert("Appointment booked successfully!");
+        } else if (response.status === "QUEUED") {
+          alert("Slot is booked. You have been added to the queue!");
+        } else if (response.status === "ALREADY_QUEUED") {
+          alert("You are already in the queue for this slot!");
+        } else {
+          alert("Appointment request processed!");
+        }
       } catch (error) {
         console.error("Error booking appointment:", error);
         alert("Failed to book appointment. Please try again.");
@@ -212,7 +242,8 @@ export default function UserDashboardPage() {
     }
   };
 
-  const filteredAvailableSlots = unbookedAvailableSlots.filter((slot) => {
+  // Filter all slots by search query only
+  const filteredSlots = allSlots.filter((slot) => {
     const lowerCaseQuery = searchQuery.toLowerCase();
     const matchesSearch = searchQuery
       ? (slot.specialization &&
@@ -222,9 +253,10 @@ export default function UserDashboardPage() {
     return matchesSearch;
   });
 
+  // Get unique providers from all slots
   const uniqueProviders = Array.from(
     new Map(
-      unbookedAvailableSlots.map((slot) => [
+      allSlots.map((slot) => [
         slot.providerId,
         {
           id: slot.providerId,
@@ -234,6 +266,36 @@ export default function UserDashboardPage() {
       ])
     ).values()
   );
+
+  // NEW: Helper function to get badge styling based on status
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "BOOKED":
+        return {
+          className: "bg-green-600 text-green-50",
+          icon: <CheckCircle className="h-3 w-3 mr-1" />,
+          text: "Booked",
+        };
+      case "QUEUED":
+        return {
+          className: "bg-purple-600 text-purple-50",
+          icon: <Clock3 className="h-3 w-3 mr-1" />,
+          text: "In Queue",
+        };
+      case "CANCELLED":
+        return {
+          className: "bg-red-600 text-red-50",
+          icon: <Ban className="h-3 w-3 mr-1" />,
+          text: "Cancelled",
+        };
+      default:
+        return {
+          className: "bg-gray-600 text-gray-50",
+          icon: <Info className="h-3 w-3 mr-1" />,
+          text: status,
+        };
+    }
+  };
 
   return (
     <>
@@ -270,8 +332,8 @@ export default function UserDashboardPage() {
               </Label>
               <Select
                 onValueChange={(value) => {
-                  const selected = availableSlots.find(
-                    (s) => s.slotId === parseInt(value, 10)
+                  const selected = allSlots.find(
+                    (s) => s.slotId === Number.parseInt(value, 10)
                   );
                   setNewSlotForReschedule(selected || null);
                 }}
@@ -359,16 +421,100 @@ export default function UserDashboardPage() {
             </div>
           </div>
 
+          {/* DEBUG INFO
+          <div className="mb-4 p-4 bg-neutral-800 rounded-lg">
+            <p className="text-neutral-300 text-sm">
+              DEBUG: Total appointments: {userAppointments.length} | Filtered:{" "}
+              {filteredAppointments.length} | Current filter: {statusFilter}
+            </p>
+            <p className="text-neutral-300 text-sm mt-1">
+              Appointment statuses:{" "}
+              {userAppointments.map((apt) => apt.status).join(", ")}
+            </p>
+          </div> */}
+
           {/* Main Content Area */}
           <div className="flex flex-col lg:flex-row gap-6 mt-6 flex-1">
             {/* View Appointments Section */}
             <Card className="flex-1 bg-neutral-900 border border-neutral-800 shadow-lg rounded-xl flex flex-col">
-              <CardHeader className="pb-4 pt-6 px-6 bg-neutral-800 border-b border-neutral-700 space-y-4 min-h-[100px]">
+              <CardHeader className="pb-4 pt-6 px-6 bg-neutral-800 border-b border-neutral-700 space-y-4 h-[150px]">
                 <div className="flex justify-between items-center w-full">
-                  <CardTitle className="text-2xl font-bold text-neutral-50 flex items-center gap-3 text-left h-[97px]">
+                  <CardTitle className="text-2xl font-bold text-neutral-50 flex items-center gap-3 text-left">
                     <ListChecks className="h-6 w-6 text-neutral-300" />
                     Your Appointments
                   </CardTitle>
+                </div>
+                {/* CHANGED: Status Filter with Radio Group */}
+                <div className="space-y-3 flex flex-row">
+                  {/* <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-neutral-400" />
+                    <Label className="text-sm font-medium text-neutral-300">
+                      Filter
+                    </Label>
+                  </div> */}
+                  <RadioGroup
+                    value={statusFilter}
+                    onValueChange={(value: AppointmentStatusFilter) =>
+                      setStatusFilter(value)
+                    }
+                    className="flex flex-wrap gap-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem
+                        value="ALL"
+                        id="filter-all"
+                        className="border-neutral-600 text-amber-500 focus:ring-amber-500"
+                      />
+                      <Label
+                        htmlFor="filter-all"
+                        className="text-sm text-neutral-300 cursor-pointer"
+                      >
+                        All
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem
+                        value="BOOKED"
+                        id="filter-booked"
+                        className="border-neutral-600 text-amber-500 focus:ring-amber-500"
+                      />
+                      <Label
+                        htmlFor="filter-booked"
+                        className="text-sm text-neutral-300 cursor-pointer flex items-center gap-1"
+                      >
+                        <CheckCircle className="h-3 w-3 text-green-500" />
+                        Booked
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem
+                        value="QUEUED"
+                        id="filter-queued"
+                        className="border-neutral-600 text-amber-500 focus:ring-amber-500"
+                      />
+                      <Label
+                        htmlFor="filter-queued"
+                        className="text-sm text-neutral-300 cursor-pointer flex items-center gap-1"
+                      >
+                        <Clock3 className="h-3 w-3 text-purple-500" />
+                        In Queue
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem
+                        value="CANCELLED"
+                        id="filter-cancelled"
+                        className="border-neutral-600 text-amber-500 focus:ring-amber-500"
+                      />
+                      <Label
+                        htmlFor="filter-cancelled"
+                        className="text-sm text-neutral-300 cursor-pointer flex items-center gap-1"
+                      >
+                        <Ban className="h-3 w-3 text-red-500" />
+                        Cancelled
+                      </Label>
+                    </div>
+                  </RadioGroup>
                 </div>
               </CardHeader>
               <CardContent className="flex-1 p-6">
@@ -380,124 +526,126 @@ export default function UserDashboardPage() {
                   <div className="text-red-500 text-center py-10">
                     {errorAppointments}
                   </div>
-                ) : userAppointments.length === 0 ? (
+                ) : filteredAppointments.length === 0 ? (
                   <div className="text-neutral-400 text-center py-10">
-                    <p>You have no appointments booked yet.</p>
+                    <p>
+                      {statusFilter === "ALL"
+                        ? "You have no appointments yet."
+                        : `No ${statusFilter.toLowerCase()} appointments found.`}
+                    </p>
                   </div>
                 ) : (
-                  <ScrollArea className="h-[calc(100vh-350px)] lg:h-[calc(100vh-300px)] pr-4">
+                  <ScrollArea className="h-[calc(100vh-400px)] lg:h-[calc(100vh-350px)] pr-4">
                     <div className="space-y-4">
-                      {userAppointments.map((appointment) => (
-                        <div
-                          key={appointment.appointmentId}
-                          className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 flex items-start gap-4 shadow-sm text-left relative"
-                        >
-                          <div className="flex-shrink-0 pt-1">
-                            {appointment.status === "CANCELLED" ? (
-                              <Ban className="h-5 w-5 text-red-500" />
-                            ) : (
-                              <CheckCircle className="h-5 w-5 text-green-500" />
-                            )}
-                          </div>
-                          <div className="flex-grow">
-                            <p className="text-lg font-semibold text-neutral-50">
-                              {appointment.providerName}
-                            </p>
-                            {appointment.specialization && (
-                              <Badge
-                                variant="secondary"
-                                className="mt-1 mb-2 px-2 py-1 rounded-full text-xs font-medium bg-sky-500 text-blue-50"
-                              >
-                                <Briefcase className="h-3 w-3 mr-1" />
-                                {appointment.specialization}
-                              </Badge>
-                            )}
-                            <p className="text-neutral-300 text-sm flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              {format(parseISO(appointment.startTime), "PPP")}
-                            </p>
-                            <p className="text-neutral-300 text-sm flex items-center gap-1">
-                              <Clock className="h-4 w-4" />
-                              {format(
-                                parseISO(appointment.startTime),
-                                "p"
-                              )} - {format(parseISO(appointment.endTime), "p")}
-                            </p>
-                            <Badge
-                              className={`mt-2 px-2 py-1 rounded-full text-xs font-medium ${
-                                appointment.status === "CANCELLED"
-                                  ? "bg-red-600 text-red-50"
-                                  : "bg-green-600 text-green-50"
-                              }`}
-                            >
-                              {appointment.status === "CANCELLED"
-                                ? "Cancelled"
-                                : "Booked"}
-                            </Badge>
-                          </div>
-                          {appointment.status !== "CANCELLED" && (
-                            <div className="absolute top-2 right-2 flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-neutral-400 hover:text-amber-500 hover:bg-neutral-700 rounded-full"
-                                onClick={() =>
-                                  handleOpenRescheduleDialog(appointment)
-                                }
-                                title="Reschedule Appointment"
-                              >
-                                <Pencil className="h-5 w-5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-neutral-400 hover:text-red-500 hover:bg-neutral-700 rounded-full"
-                                onClick={() =>
-                                  handleCancelAppointment(appointment)
-                                }
-                                title="Cancel Appointment"
-                              >
-                                <Trash2 className="h-5 w-5" />
-                              </Button>
+                      {filteredAppointments.map((appointment) => {
+                        const statusBadge = getStatusBadge(appointment.status);
+                        return (
+                          <div
+                            key={appointment.appointmentId}
+                            className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 flex items-start gap-4 shadow-sm text-left relative"
+                          >
+                            <div className="flex-shrink-0 pt-1">
+                              {appointment.status === "CANCELLED" ? (
+                                <Ban className="h-5 w-5 text-red-500" />
+                              ) : appointment.status === "QUEUED" ? (
+                                <Clock3 className="h-5 w-5 text-purple-500" />
+                              ) : (
+                                <CheckCircle className="h-5 w-5 text-green-500" />
+                              )}
                             </div>
-                          )}
-                        </div>
-                      ))}
+                            <div className="flex-grow">
+                              <p className="text-lg font-semibold text-neutral-50">
+                                {appointment.providerName}
+                              </p>
+                              {appointment.specialization && (
+                                <Badge
+                                  variant="secondary"
+                                  className="mt-1 mb-2 px-2 py-1 rounded-full text-xs font-medium bg-sky-500 text-blue-50"
+                                >
+                                  <Briefcase className="h-3 w-3 mr-1" />
+                                  {appointment.specialization}
+                                </Badge>
+                              )}
+                              <p className="text-neutral-300 text-sm flex items-center gap-1">
+                                <Calendar className="h-4 w-4" />
+                                {format(parseISO(appointment.startTime), "PPP")}
+                              </p>
+                              <p className="text-neutral-300 text-sm flex items-center gap-1">
+                                <Clock className="h-4 w-4" />
+                                {format(
+                                  parseISO(appointment.startTime),
+                                  "p"
+                                )} -{" "}
+                                {format(parseISO(appointment.endTime), "p")}
+                              </p>
+                              {/* CHANGED: Use dynamic status badge */}
+                              <Badge
+                                className={`mt-2 px-2 py-1 rounded-full text-xs font-medium flex items-center w-fit ${statusBadge.className}`}
+                              >
+                                {statusBadge.icon}
+                                {statusBadge.text}
+                              </Badge>
+                            </div>
+                            {appointment.status !== "CANCELLED" && (
+                              <div className="absolute top-2 right-2 flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-neutral-400 hover:text-amber-500 hover:bg-neutral-700 rounded-full"
+                                  onClick={() =>
+                                    handleOpenRescheduleDialog(appointment)
+                                  }
+                                  title="Reschedule Appointment"
+                                >
+                                  <Pencil className="h-5 w-5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-neutral-400 hover:text-red-500 hover:bg-neutral-700 rounded-full"
+                                  onClick={() =>
+                                    handleCancelAppointment(appointment)
+                                  }
+                                  title="Cancel Appointment"
+                                >
+                                  <Trash2 className="h-5 w-5" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </ScrollArea>
                 )}
               </CardContent>
             </Card>
 
-            {/* View Slots Section - Refactored to old design with new logic */}
+            {/* View Slots Section */}
             <Card className="flex-1 bg-neutral-900 border border-neutral-800 shadow-lg rounded-xl flex flex-col">
               <CardHeader className="pb-4 pt-6 px-6 bg-neutral-800 border-b border-neutral-700 space-y-4">
-                {/* Top Row: Title on left, Book button on right */}
                 <div className="flex justify-between items-center w-full">
                   <CardTitle className="text-2xl font-bold text-neutral-50 flex items-center gap-3 text-left">
                     <Clock4 className="h-6 w-6 text-neutral-300" />
-                    Available Slots
+                    All Slots
                   </CardTitle>
-                  {/* The DialogTrigger wraps the button to open the booking dialog */}
                   <Button
                     variant="outline"
                     className="bg-amber-500 hover:bg-amber-600 text-neutral-900 font-semibold py-2 rounded-md transition-colors duration-200"
                     onClick={() => {
-                      setSelectedProviderIdForDialog(null); // Reset selection when opening from main button
-                      setSelectedSlotToBook(null); // Reset selection
-                      setIsBookingDialogOpen(true); // Open the dialog explicitly
+                      setSelectedProviderIdForDialog(null);
+                      setSelectedSlotToBook(null);
+                      setIsBookingDialogOpen(true);
                     }}
                   >
                     <CalendarPlus className="h-4 w-4 mr-1" /> Book
                   </Button>
                 </div>
-
-                {/* Bottom Row: Centered Search */}
                 <div className="relative w-full flex justify-center">
                   <div className="relative w-full sm:w-96">
                     <Input
                       type="text"
-                      placeholder="Search by specialization or provider..." // Updated placeholder for better search hint
+                      placeholder="Search by specialization or provider..."
                       className="pl-10 bg-neutral-800 border border-neutral-700 text-neutral-50 placeholder:text-neutral-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 h-11 rounded-lg"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -509,22 +657,22 @@ export default function UserDashboardPage() {
               <CardContent className="flex-1 p-6">
                 {loadingSlots ? (
                   <div className="text-neutral-400 text-center py-10">
-                    Loading available slots...
+                    Loading slots...
                   </div>
                 ) : errorSlots ? (
                   <div className="text-red-500 text-center py-10">
                     {errorSlots}
                   </div>
-                ) : filteredAvailableSlots.length === 0 ? (
+                ) : filteredSlots.length === 0 ? (
                   <div className="text-neutral-400 text-center py-10">
-                    <p>No available slots found matching your criteria.</p>
+                    <p>No slots found matching your criteria.</p>
                   </div>
                 ) : (
                   <ScrollArea className="h-[calc(100vh-350px)] lg:h-[calc(100vh-300px)] pr-4">
                     <div className="space-y-4">
-                      {filteredAvailableSlots.map((slot) => (
+                      {filteredSlots.map((slot) => (
                         <div
-                          key={slot.slotId} // Use backend ID
+                          key={slot.slotId}
                           className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 flex items-start gap-4 shadow-sm text-left"
                         >
                           <div className="flex-shrink-0 pt-1">
@@ -552,12 +700,22 @@ export default function UserDashboardPage() {
                               {format(parseISO(slot.startTime), "p")} -{" "}
                               {format(parseISO(slot.endTime), "p")}
                             </p>
-                            <Badge
-                              variant="default" // Or a custom variant for green
-                              className="mt-2 px-2 py-1 rounded-full text-xs font-medium bg-green-600 text-white flex items-center gap-1" // Green background, white text
-                            >
-                              <CheckCircle className="h-3 w-3" /> Available
-                            </Badge>
+                            {slot.booked ? (
+                              <Badge
+                                variant="secondary"
+                                className="mt-2 px-2 py-1 rounded-full text-xs font-medium bg-yellow-600 text-yellow-50 flex items-center gap-1 w-fit"
+                              >
+                                <Users className="h-3 w-3" />
+                                Booked
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="default"
+                                className="mt-2 px-2 py-1 rounded-full text-xs font-medium bg-green-600 text-white flex items-center gap-1 w-fit"
+                              >
+                                <CheckCircle className="h-3 w-3" /> Available
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -569,19 +727,22 @@ export default function UserDashboardPage() {
           </div>
         </div>
 
-        {/* Booking Dialog Content (remains the same from new version) */}
-        <DialogContent className="bg-neutral-900 border-neutral-700 text-neutral-50">
+        {/* FIXED: Booking Dialog Content - Better Layout */}
+        <DialogContent className="bg-neutral-900 border-neutral-700 text-neutral-50 max-w-md w-full mx-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-amber-400">
               Book an Appointment
             </DialogTitle>
             <DialogDescription className="text-neutral-400 pt-2">
-              Select a provider and an available time slot.
+              Select a provider and a time slot.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="provider-select" className="text-right">
+          <div className="space-y-6 py-4">
+            <div className="space-y-2">
+              <Label
+                htmlFor="provider-select"
+                className="text-neutral-300 font-medium"
+              >
                 Provider
               </Label>
               <Select
@@ -591,7 +752,7 @@ export default function UserDashboardPage() {
               >
                 <SelectTrigger
                   id="provider-select"
-                  className="col-span-3 bg-neutral-800 border-neutral-600"
+                  className="w-full bg-neutral-800 border-neutral-600"
                 >
                   <SelectValue placeholder="Select a provider" />
                 </SelectTrigger>
@@ -608,14 +769,18 @@ export default function UserDashboardPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="slot-select" className="text-right">
+
+            <div className="space-y-2">
+              <Label
+                htmlFor="slot-select"
+                className="text-neutral-300 font-medium"
+              >
                 Time Slot
               </Label>
               <Select
                 onValueChange={(value) => {
-                  const selected = availableSlots.find(
-                    (s) => s.slotId === parseInt(value, 10)
+                  const selected = allSlots.find(
+                    (s) => s.slotId === Number.parseInt(value, 10)
                   );
                   setSelectedSlotToBook(selected || null);
                 }}
@@ -623,7 +788,7 @@ export default function UserDashboardPage() {
               >
                 <SelectTrigger
                   id="slot-select"
-                  className="col-span-3 bg-neutral-800 border-neutral-600"
+                  className="w-full bg-neutral-800 border-neutral-600"
                 >
                   <SelectValue placeholder="Select a time slot" />
                 </SelectTrigger>
@@ -634,26 +799,58 @@ export default function UserDashboardPage() {
                       value={String(slot.slotId)}
                       className="focus:bg-neutral-700"
                     >
-                      {format(parseISO(slot.startTime), "PPP, p")}
+                      <div className="flex items-center justify-between w-full">
+                        <span>
+                          {format(parseISO(slot.startTime), "PPP, p")}
+                        </span>
+                        {slot.booked && (
+                          <Badge className="ml-2 bg-yellow-600 text-yellow-50 text-xs">
+                            Booked
+                          </Badge>
+                        )}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Warning for booked slots */}
+            {selectedSlotToBook && selectedSlotToBook.booked && (
+              <div className="p-3 bg-yellow-900/20 border border-yellow-600/50 rounded-md">
+                <div className="flex items-center gap-2 text-yellow-400">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm font-medium">Queue Warning</span>
+                </div>
+                <p className="text-yellow-300 text-sm mt-1">
+                  This slot is already booked. By booking this slot, you will be
+                  entering a queue.
+                </p>
+              </div>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              className="bg-neutral-800 hover:bg-neutral-700"
+              onClick={() => setIsBookingDialogOpen(false)}
+            >
+              Cancel
+            </Button>
             <Button
               className="bg-amber-500 hover:bg-amber-600 text-neutral-900"
               onClick={handleBookAppointment}
               disabled={!selectedSlotToBook}
             >
-              Confirm Booking
+              {selectedSlotToBook && selectedSlotToBook.booked
+                ? "Join Queue"
+                : "Confirm Booking"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Cancellation Confirmation Dialog (remains the same from new version) */}
+      {/* Cancellation Confirmation Dialog */}
       <Dialog open={isCancelConfirmOpen} onOpenChange={setIsCancelConfirmOpen}>
         <DialogContent className="bg-neutral-900 border-neutral-700 text-neutral-50">
           <DialogHeader>

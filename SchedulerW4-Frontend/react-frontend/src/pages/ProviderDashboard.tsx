@@ -140,7 +140,7 @@ export default function ProviderDashboardPage() {
   };
 
   const handleDeleteSlot = (slot: SlotResponseDto) => {
-    if (slot.isBooked) {
+    if (slot.booked) {
       alert("Cannot delete a booked slot.");
       return;
     }
@@ -315,7 +315,7 @@ export default function ProviderDashboardPage() {
                           {format(parseISO(slot.endTime), "p")}
                         </Badge>
                       </div>
-                      {!slot.isBooked && (
+                      {!slot.booked && (
                         <Button
                           variant="ghost"
                           size="icon"
